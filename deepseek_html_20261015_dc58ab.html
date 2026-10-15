@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ESP32">
+  <title>ESP32 Monitor</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background:#111; color:#eee; margin:0; padding:12px;
+      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    h1 { color:#4fc3f7; font-size:22px; text-align:center; margin:8px 0 4px; }
+    .sub { color:#888; font-size:13px; text-align:center; margin-bottom:16px; }
+    .status {
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      background:#1e1e1e; padding:10px; border-radius:10px; margin-bottom:14px;
+      font-size:14px;
+    }
+    .dot {
+      width:12px; height:12px; border-radius:6px; background:#e57373;
+      transition:background .3s;
+    }
+    .grid {
+      display:grid; grid-template-columns:repeat(2,1fr); gap:10px;
+      margin-bottom:14px;
+    }
+    .card {
+      background:#1e1e1e; border-radius:12px; padding:14px; text-align:center;
+    }
+    .val { font-size:1.7em; font-weight:700; color:#4fc3f7; }
+    .lbl { color:#aaa; font-size:.8em; margin-top:6px; }
+    .val.red { color:#e57373; }
+    .val.green { color:#81c784; }
+    .val.yellow { color:#ffb74d; }
+    .section-h {
+      color:#4fc3f7; font-size:15px; margin:16px 0 8px;
+      padding-left:4px;
+    }
+    .list {
+      background:#1e1e1e; border-radius:12px; padding:12px;
+      font-family:ui-monospace, monospace; font-size:12px;
+      color:#ddd; max-height:220px; overflow-y:auto; white-space:pre-wrap;
+      word-break:break-word;
+    }
+    .list .line { padding:3px 0; border-bottom:1px solid #2a2a2a; }
+    .list .line:last-child { border-bottom:none; }
+    .empty { color:#666; text-align:center; padding:20px; }
+  </style>
+</head>
+<body>
+
+<h1 id="title">ESP32 Monitor</h1>
+<div class="sub">broker.hivemq.com</div>
+
+<div class="status">
+  <div class="dot" id="dot"></div>
+  <span id="statusTxt">Подключение…</span>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="val" id="ds">--</div><div class="lbl">DS18B20, °C</div></div>
+  <div class="card"><div class="val" id="dsmm">-- / --</div><div class="lbl">Min / Max, °C</div></div>
+  <div class="card"><div class="val" id="dht">--</div><div class="lbl">Прибор, °C</div></div>
+  <div class="card"><div class="val" id="hum">--</div><div class="lbl">Влажность, %</div></div>
+  <div class="card"><div class="val" id="p">--</div><div class="lbl">Давление, мм</div></div>
+  <div class="card"><div class="val" id="water">--</div><div class="lbl">Утечка воды</div></div>
+  <div class="card"><div class="val" id="gsm">--</div><div class="lbl">GSM</div></div>
+  <div class="card"><div class="val" id="bal">--</div><div class="lbl">Баланс, руб</div></div>
+  <div class="card"><div class="val" id="hist">--</div><div class="lbl">История DS</div></div>
+  <div class="card"><div class="val" id="alr">--</div><div class="lbl">Тревог</div></div>
+</div>
+
+<div class="section-h">Последние тревоги</div>
+<div class="list" id="alarms"><div class="empty">Нет данных</div></div>
+
+<div class="section-h">История DS18B20 (последние)</div>
+<div class="list" id="history"><div class="empty">Нет данных</div></div>
+
+<script>
+  // ============ НАСТРОЙКИ ============
+  const PREFIX = "esp32-mrt-a8f7k2m9";
+  const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+  // ====================================
+
+  const dot       = document.getElementById('dot');
+  const statusTxt = document.getElementById('statusTxt');
+
+  let historyPoints = [];
+  const MAX_HISTORY_SHOW = 30;
+
+  const client = mqtt.connect(BROKER, {
+    clientId: 'ios-web-' + Math.random().toString(16).slice(2, 10),
+    clean: true,
+    connectTimeout: 10000,
+    reconnectPeriod: 5000,
+    keepalive: 30,
+  });
+
+  client.on('connect', () => {
+    dot.style.background = '#81c784';
+    statusTxt.textContent = 'Подключено';
+    client.subscribe(PREFIX + '/status', { qos: 0 });
+    client.subscribe(PREFIX + '/alarm',  { qos: 0 });
+    client.subscribe(PREFIX + '/balance', { qos: 0 });
+    client.subscribe(PREFIX + '/history/chunk', { qos: 0 });
+    client.subscribe(PREFIX + '/alarms/chunk',  { qos: 0 });
+  });
+
+  client.on('reconnect', () => {
+    dot.style.background = '#ffb74d';
+    statusTxt.textContent = 'Переподключение…';
+  });
+
+  client.on('close', () => {
+    dot.style.background = '#e57373';
+    statusTxt.textContent = 'Связь потеряна';
+  });
+
+  client.on('error', (e) => {
+    dot.style.background = '#e57373';
+    statusTxt.textContent = 'Ошибка: ' + (e.message || e);
+  });
+
+  client.on('message', (topic, payload) => {
+    const text = payload.toString();
+
+    if (topic === PREFIX + '/status') {
+      try {
+        const j = JSON.parse(text);
+        document.getElementById('ds').textContent  = j.ds.toFixed(2);
+        document.getElementById('dsmm').textContent = j.dsmin.toFixed(1) + ' / ' + j.dsmax.toFixed(1);
+        document.getElementById('dht').textContent  = j.dht_t.toFixed(1);
+        document.getElementById('hum').textContent  = j.dht_h.toFixed(0);
+        document.getElementById('p').textContent    = j.p.toFixed(1);
+
+        const wEl = document.getElementById('water');
+        wEl.textContent = j.rain ? 'ДА' : 'нет';
+        wEl.className = 'val ' + (j.rain ? 'red' : 'green');
+
+        const gEl = document.getElementById('gsm');
+        gEl.textContent = j.gsm + '/31';
+        gEl.className = 'val ' + (j.gsm > 15 ? 'green' : j.gsm > 8 ? 'yellow' : 'red');
+
+        const bal = j.bal;
+        const bEl = document.getElementById('bal');
+        if (bal >= 0) {
+          bEl.textContent = bal.toFixed(2);
+          bEl.className = 'val ' + (bal < 10 ? 'red' : bal < 50 ? 'yellow' : 'green');
+        } else {
+          bEl.textContent = '--';
+          bEl.className = 'val';
+        }
+
+        document.getElementById('hist').textContent = j.hist ?? '--';
+        document.getElementById('alr').textContent  = j.alarms ?? '--';
+
+        if (j.name && j.name.length > 0) {
+          document.getElementById('title').textContent = j.name;
+          document.title = j.name + ' — ESP32';
+        }
+      } catch(e) {}
+    }
+    else if (topic === PREFIX + '/alarm') {
+      const parts = text.split('|');
+      const type = parts[0] || 'ALARM';
+      const msg  = parts[1] || text;
+      const t = new Date().toLocaleTimeString('ru-RU');
+      addLine('alarms', t + '  ' + type + ': ' + msg);
+    }
+    else if (topic === PREFIX + '/balance') {
+      const bEl = document.getElementById('bal');
+      bEl.textContent = parseFloat(text).toFixed(2);
+      bEl.className = 'val green';
+    }
+    else if (topic === PREFIX + '/history/chunk') {
+      const entries = text.split(';');
+      for (const entry of entries) {
+        const c = entry.indexOf(',');
+        if (c < 0) continue;
+        const ts = parseInt(entry.substring(0, c));
+        const v = parseFloat(entry.substring(c + 1));
+        if (ts > 1000000000 && v > -50 && v < 100) {
+          historyPoints.push({ t: ts, v: v });
+        }
+      }
+      renderHistory();
+    }
+    else if (topic === PREFIX + '/alarms/chunk') {
+      const entries = text.split(';');
+      for (const entry of entries) {
+        const c1 = entry.indexOf(',');
+        const pipe = entry.indexOf('|', c1 + 1);
+        if (c1 < 0 || pipe < 0) continue;
+        const ts = parseInt(entry.substring(0, c1));
+        const type = entry.substring(c1 + 1, pipe);
+        const msg = entry.substring(pipe + 1);
+        if (ts > 1000000000) {
+          const d = new Date(ts * 1000);
+          const timeStr = d.toLocaleString('ru-RU');
+          addLine('alarms', timeStr + '  ' + type + ': ' + msg);
+        }
+      }
+    }
+  });
+
+  function addLine(containerId, text) {
+    const el = document.getElementById(containerId);
+    const empty = el.querySelector('.empty');
+    if (empty) empty.remove();
+    const div = document.createElement('div');
+    div.className = 'line';
+    div.textContent = text;
+    el.appendChild(div);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function renderHistory() {
+    const el = document.getElementById('history');
+    el.innerHTML = '';
+    if (historyPoints.length === 0) {
+      el.innerHTML = '<div class="empty">Нет данных</div>';
+      return;
+    }
+    // свежие сверху, показать последние N
+    const slice = historyPoints.slice(-MAX_HISTORY_SHOW).reverse();
+    for (const p of slice) {
+      const d = new Date(p.t * 1000);
+      const timeStr = d.toLocaleString('ru-RU');
+      const div = document.createElement('div');
+      div.className = 'line';
+      div.textContent = timeStr + '   ' + p.v.toFixed(2) + ' °C';
+      el.appendChild(div);
+    }
+  }
+</script>
+
+</body>
+</html>
