@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Управление</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #eee; padding: 20px; }
+        h1 { color: #4fc3f7; text-align: center; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
+        input[type="text"], input[type="password"] { background: #333; color: #fff; border: 1px solid #555; padding: 10px; border-radius: 5px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+        button { background: #4fc3f7; color: #000; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; }
+        .sms-btn { background: #ffb74d; }
+        ul { list-style: none; padding: 0; }
+        li { background: #333; margin: 5px 0; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .del-btn { background: #e57373; padding: 5px 10px; width: auto; margin: 0 0 0 5px; }
+        .edit-btn { background: #81c784; padding: 5px 10px; width: auto; margin: 0; }
+        a { color: #4fc3f7; text-decoration: none; display: block; text-align: center; margin-top: 20px; font-size: 1.2em; }
+    </style>
+</head>
+<body>
+    <div id="authBlock" style="display:none; text-align:center; margin-top: 50px;">
+        <h2>Введите PIN-код</h2>
+        <input type="password" id="pinInput" placeholder="****" style="width: 150px; text-align: center; font-size: 20px;">
+        <button onclick="checkPin()" style="width: 150px;">Войти</button>
+    </div>
+    <div id="mainBlock" class="card" style="display:none;">
+        <h2 style="text-align:center;">SMS Оповещения</h2>
+        <input type="text" id="phone_input" placeholder="+7...">
+        <button onclick="addPhone()">Добавить номер</button>
+        <ul id="phone_list"></ul>
+        <button class="sms-btn" onclick="testSms()">📩 Отправить тест SMS</button>
+        <a href="index.html">← На главную</a>
+    </div>
+
+    <script>
+        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
+        const MQTT_PREFIX = "MonitorESP32-002";
+        const TOPIC_CMD = MQTT_PREFIX + "/cmd";
+        const TOPIC_PHONES = MQTT_PREFIX + "/phones";
+        let client;
+        let PIN = "";
+
+        window.onload = () => {
+            PIN = prompt("Введите PIN-код:");
+            if (PIN === "1111") {
+                document.getElementById('mainBlock').style.display = 'block';
+                connectMQTT();
+            } else {
+                document.getElementById('authBlock').style.display = 'block';
+                if (PIN !== null) alert("Неверный PIN-код!");
+            }
+        };
+
+        function checkPin() {
+            let p = document.getElementById('pinInput').value;
+            if (p === "1111") {
+                PIN = p; document.getElementById('authBlock').style.display = 'none';
+                document.getElementById('mainBlock').style.display = 'block';
+                connectMQTT();
+            } else { alert("Неверный PIN-код!"); }
+        }
+
+        function connectMQTT() {
+            client = mqtt.connect(MQTT_BROKER, { clientId: 'web_ph_' + Math.random().toString(16).slice(2, 8), clean: true });
+            client.on('connect', () => {
+                client.subscribe(TOPIC_PHONES);
+                client.publish(TOPIC_CMD, 'get_phones');
+            });
+            client.on('message', (topic, payload) => {
+                if (topic === TOPIC_PHONES) updatePhoneList(payload.toString());
+            });
+        }
+
+        function updatePhoneList(payload) {
+            const listEl = document.getElementById('phone_list');
+            listEl.innerHTML = '';
+            try {
+                const data = JSON.parse(payload);
+                const phones = data.phones || [];
+                if (phones.length === 0) {
+                    listEl.innerHTML = '<li style="justify-content: center; color: #888;">Нет номеров</li>';
+                    return;
+                }
+                phones.forEach((phone, index) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>${phone}</span> 
+                    <div>
+                        <button class="edit-btn" onclick="editPhone(${index}, '${phone}')">✎</button>
+                        <button class="del-btn" onclick="deletePhone(${index})">X</button>
+                    </div>`;
+                    listEl.appendChild(li);
+                });
+            } catch (e) {}
+        }
+
+        function addPhone() {
+            const phone = document.getElementById('phone_input').value.trim();
+            if (!phone) return;
+            client.publish(TOPIC_CMD, `add_phone:${phone}`);
+            document.getElementById('phone_input').value = '';
+        }
+
+        function editPhone(index, oldPhone) {
+            const newPhone = prompt("Редактировать номер:", oldPhone);
+            if (newPhone && newPhone !== oldPhone) {
+                client.publish(TOPIC_CMD, `del_phone:${index}`);
+                setTimeout(() => client.publish(TOPIC_CMD, `add_phone:${newPhone}`), 500);
+            }
+        }
+
+        function deletePhone(index) { client.publish(TOPIC_CMD, `del_phone:${index}`); }
+        function testSms() { client.publish(TOPIC_CMD, 'test_sms'); alert('Команда на отправку теста отправлена!'); }
+    </script>
+</body>
+</html>
