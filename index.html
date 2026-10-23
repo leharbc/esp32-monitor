@@ -1,91 +1,228 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>ESP32 Monitor</title>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <style>
-    * { box-sizing: border-box; }
-    body { background:#111; color:#eee; margin:0; padding:12px; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial; }
-    h1 { color:#4fc3f7; font-size:22px; text-align:center; margin:8px 0 4px; }
-    .sub { color:#888; font-size:13px; text-align:center; margin-bottom:16px; }
-    .status { display:flex; align-items:center; justify-content:center; gap:8px; background:#1e1e1e; padding:10px; border-radius:10px; margin-bottom:14px; font-size:14px; }
-    .dot { width:12px; height:12px; border-radius:6px; background:#e57373; transition:background .3s; }
-    .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px; }
-    .card { background:#1e1e1e; border-radius:12px; padding:14px; text-align:center; }
-    .val { font-size:1.7em; font-weight:700; color:#4fc3f7; }
-    .lbl { color:#aaa; font-size:.8em; margin-top:6px; }
-    .val.red { color:#e57373; }
-    .val.green { color:#81c784; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мониторинг ESP32-S3</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #eee; margin: 0; padding: 20px; }
+        h1 { color: #4fc3f7; text-align: center; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; max-width: 1000px; margin: 0 auto; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .val { font-size: 1.5em; font-weight: bold; color: #81c784; }
+        .val.alarm { color: #e57373; }
+        .val.wet { color: #4fc3f7; }
+        .lbl { color: #aaa; font-size: 0.9em; }
+        input[type="number"], input[type="text"] { background: #333; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 5px; width: 80px; }
+        button { background: #4fc3f7; color: #000; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 5px; }
+        button:hover { background: #29b6f6; }
+        a { color: #4fc3f7; text-decoration: none; display: inline-block; margin-top: 10px; }
+        ul { list-style: none; padding: 0; margin-top: 10px; }
+        li { background: #333; margin: 5px 0; padding: 8px; border-radius: 5px; display: flex; justify-content: space-between; }
+        .del-btn { background: #e57373; padding: 4px 8px; font-size: 12px; margin: 0; }
+        .sms-btn { background: #ffb74d; width: 100%; margin-top: 10px; }
+        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; }
+        .status-dot.connected { background: #81c784; }
+        .status-text { vertical-align: middle; }
+    </style>
 </head>
 <body>
-<h1 id="title">ESP32 Monitor</h1>
-<div class="sub">Мониторинг через 4G (GitHub)</div>
+    <h1>Мониторинг ESP32-S3</h1>
+    
+    <!-- Индикатор подключения -->
+    <div style="text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto;">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-text" id="statusText">Подключение к MQTT...</span>
+    </div>
 
-<div class="status">
-  <div class="dot" id="dot"></div>
-  <span id="statusTxt">Подключение к брокеру...</span>
-</div>
+    <div class="grid">
+        <!-- Датчики -->
+        <div class="card">
+            <h2>Датчики</h2>
+            <p><span class="lbl">DS18B20 (1):</span> <span class="val" id="ds1">--</span> °C</p>
+            <p><span class="lbl">DS18B20 (2):</span> <span class="val" id="ds2">--</span> °C</p>
+            <p><span class="lbl">DS18B20 (3):</span> <span class="val" id="ds3">--</span> °C</p>
+            <p><span class="lbl">DHT11:</span> <span class="val" id="dht_t">--</span> °C / <span class="val" id="dht_h">--</span> %</p>
+            <p><span class="lbl">Влага (YL-83):</span> <span class="val" id="rain">--</span></p>
+        </div>
 
-<div class="grid">
-  <div class="card"><div class="val" id="ds">--</div><div class="lbl">DS18B20, °C</div></div>
-  <div class="card"><div class="val" id="dht">--</div><div class="lbl">DHT11, °C</div></div>
-  <div class="card"><div class="val" id="hum">--</div><div class="lbl">Влажность, %</div></div>
-  <div class="card"><div class="val" id="water">--</div><div class="lbl">Влага/Дождь</div></div>
-  <div class="card"><div class="val" id="gsm">--</div><div class="lbl">Сигнал 4G</div></div>
-</div>
+        <!-- Питание -->
+        <div class="card">
+            <h2>Питание</h2>
+            <p><span class="lbl">Источник:</span> <span class="val" id="power">--</span></p>
+            <p><span class="lbl">Батарея:</span> <span class="val" id="batt">--</span> В (<span id="batt_pct">--</span>%)</p>
+        </div>
 
-<div style="text-align:center; color:#888; font-size:12px; margin-top:20px;">
-  Камера доступна только при локальном подключении по IP.
-</div>
+        <!-- Сеть 4G и GPS -->
+        <div class="card">
+            <h2>Сеть 4G и GPS</h2>
+            <p><span class="lbl">Статус:</span> <span class="val" id="gsm_status">--</span></p>
+            <p><span class="lbl">IP модема:</span> <span class="val" id="gsm_ip">--</span></p>
+            <p><span class="lbl">Сигнал:</span> <span class="val" id="gsm_signal">--</span> (CSQ)</p>
+            <p><span class="lbl">GPS:</span> <span class="val" id="gps">--</span></p>
+        </div>
 
-<script>
-  const PREFIX = "MonitorESP32-002";
-  const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+        <!-- Пороги -->
+        <div class="card">
+            <h2>Пороги DS18B20</h2>
+            <p><span class="lbl">Мин:</span> <input type="number" id="in_min" step="0.1"> <span class="lbl">Макс:</span> <input type="number" id="in_max" step="0.1"></p>
+            <button onclick="saveThresholds()">Сохранить</button>
+        </div>
 
-  const dot = document.getElementById('dot');
-  const statusTxt = document.getElementById('statusTxt');
+        <!-- SMS -->
+        <div class="card">
+            <h2>SMS Оповещения</h2>
+            <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                <input type="text" id="phone_input" placeholder="+7..." style="width: 100%;">
+                <button onclick="addPhone()">+</button>
+            </div>
+            <ul id="phone_list"></ul>
+            <button class="sms-btn" onclick="testSms()">📩 Отправить тест SMS</button>
+        </div>
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px;">
+        <a href="/history" style="font-size: 1.2em;">📜 История показаний</a>
+    </div>
 
-  const client = mqtt.connect(BROKER, {
-    clientId: 'web-' + Math.random().toString(16).slice(2, 10),
-    clean: true, connectTimeout: 10000, reconnectPeriod: 5000, keepalive: 30,
-  });
+    <script>
+        // ================== НАСТРОЙКИ MQTT ==================
+        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
+        const MQTT_PREFIX = "MonitorESP32-002";
+        const TOPIC_STATUS = MQTT_PREFIX + "/status";
+        const TOPIC_CMD = MQTT_PREFIX + "/cmd";
+        // ====================================================
 
-  client.on('connect', () => {
-    dot.style.background = '#81c784';
-    statusTxt.textContent = 'Подключено';
-    client.subscribe(PREFIX + '/status', { qos: 0 });
-  });
+        let client;
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
 
-  client.on('close', () => {
-    dot.style.background = '#e57373';
-    statusTxt.textContent = 'Связь потеряна';
-  });
+        // Функция для обновления данных на странице
+        function updateUI(data) {
+            // Датчики
+            document.getElementById('ds1').textContent = data.ds ? data.ds.toFixed(2) : '--';
+            document.getElementById('ds2').textContent = data.ds2 ? data.ds2.toFixed(2) : '--';
+            document.getElementById('ds3').textContent = data.ds3 ? data.ds3.toFixed(2) : '--';
+            document.getElementById('dht_t').textContent = data.dht_t ? data.dht_t.toFixed(1) : '--';
+            document.getElementById('dht_h').textContent = data.dht_h ? data.dht_h.toFixed(0) : '--';
+            
+            // Влага
+            const rainEl = document.getElementById('rain');
+            if (data.rain === 1) {
+                rainEl.textContent = 'Влажно';
+                rainEl.className = 'val wet';
+            } else {
+                rainEl.textContent = 'Сухо';
+                rainEl.className = 'val';
+            }
 
-  client.on('message', (topic, payload) => {
-    if (topic === PREFIX + '/status') {
-      try {
-        const j = JSON.parse(payload.toString());
-        
-        document.getElementById('ds').textContent = j.ds.toFixed(2);
-        document.getElementById('dht').textContent = j.dht_t.toFixed(1);
-        document.getElementById('hum').textContent = j.dht_h.toFixed(0);
-        
-        const wEl = document.getElementById('water');
-        wEl.textContent = j.rain ? 'Влажно' : 'Сухо';
-        wEl.className = 'val ' + (j.rain ? 'red' : 'green');
+            // Питание
+            document.getElementById('power').textContent = data.extPower ? 'Внешнее' : 'Батарея';
+            document.getElementById('batt').textContent = data.batt ? data.batt.toFixed(2) : '--';
+            document.getElementById('batt_pct').textContent = data.batt_pct ? data.batt_pct.toFixed(0) : '--';
 
-        const gEl = document.getElementById('gsm');
-        gEl.textContent = j.gsm + '/31';
-        gEl.className = 'val ' + (j.gsm > 15 ? 'green' : j.gsm > 8 ? 'yellow' : 'red');
-      } catch(e) {
-        console.error("JSON Parse error", e);
-      }
-    }
-  });
-</script>
+            // Сеть
+            document.getElementById('gsm_status').textContent = data.gsmConnected ? 'Подключено' : 'Нет сети';
+            document.getElementById('gsm_ip').textContent = data.modem_ip || '--';
+            document.getElementById('gsm_signal').textContent = data.gsm || '--';
+            
+            // GPS
+            if (data.gpsValid) {
+                document.getElementById('gps').textContent = `${data.gps_lat.toFixed(4)}, ${data.gps_lon.toFixed(4)}`;
+            } else {
+                document.getElementById('gps').textContent = 'Поиск...';
+            }
+
+            // Пороги
+            if (document.activeElement !== document.getElementById('in_min')) {
+                document.getElementById('in_min').value = data.t_min;
+            }
+            if (document.activeElement !== document.getElementById('in_max')) {
+                document.getElementById('in_max').value = data.t_max;
+            }
+        }
+
+        // Подключение к MQTT
+        function connectMQTT() {
+            client = mqtt.connect(MQTT_BROKER, {
+                clientId: 'web_' + Math.random().toString(16).slice(2, 8),
+                clean: true,
+                connectTimeout: 10000,
+                reconnectPeriod: 5000,
+            });
+
+            client.on('connect', () => {
+                console.log('MQTT Connected');
+                statusDot.classList.add('connected');
+                statusText.textContent = 'Подключено к MQTT';
+                client.subscribe(TOPIC_STATUS, { qos: 0 });
+            });
+
+            client.on('reconnect', () => {
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'Переподключение...';
+            });
+
+            client.on('close', () => {
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'Связь потеряна';
+            });
+
+            client.on('error', (err) => {
+                console.error('MQTT Error:', err);
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'Ошибка MQTT';
+            });
+
+            client.on('message', (topic, payload) => {
+                if (topic === TOPIC_STATUS) {
+                    try {
+                        const data = JSON.parse(payload.toString());
+                        updateUI(data);
+                    } catch (e) {
+                        console.error('JSON Parse Error:', e);
+                    }
+                }
+            });
+        }
+
+        // Отправка команд
+        function publishCmd(cmd) {
+            if (client && client.connected) {
+                client.publish(TOPIC_CMD, cmd);
+            }
+        }
+
+        // Сохранение порогов
+        function saveThresholds() {
+            const min = document.getElementById('in_min').value;
+            const max = document.getElementById('in_max').value;
+            publishCmd(`set_thresh:${min},${max}`);
+            alert('Пороги отправлены!');
+        }
+
+        // Добавление телефона
+        function addPhone() {
+            const phone = document.getElementById('phone_input').value.trim();
+            if (!phone) return;
+            publishCmd(`add_phone:${phone}`);
+            document.getElementById('phone_input').value = '';
+        }
+
+        // Удаление телефона
+        function deletePhone(index) {
+            publishCmd(`del_phone:${index}`);
+        }
+
+        // Тест SMS
+        function testSms() {
+            publishCmd('test_sms'); // Или просто команда для отправки SMS
+            alert('Команда на отправку тестового SMS отправлена!');
+        }
+
+        // Запуск
+        connectMQTT();
+    </script>
 </body>
 </html>
