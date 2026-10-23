@@ -10,28 +10,30 @@
         h1 { color: #4fc3f7; text-align: center; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; max-width: 1000px; margin: 0 auto; }
         .card { background: #1e1e1e; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .val { font-size: 1.5em; font-weight: bold; color: #81c784; }
+        .val { font-size: 1.4em; font-weight: bold; color: #81c784; }
         .val.alarm { color: #e57373; }
         .val.wet { color: #4fc3f7; }
         .lbl { color: #aaa; font-size: 0.9em; }
         input[type="number"], input[type="text"] { background: #333; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 5px; width: 80px; }
         button { background: #4fc3f7; color: #000; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 5px; }
         button:hover { background: #29b6f6; }
-        a { color: #4fc3f7; text-decoration: none; display: inline-block; margin-top: 10px; }
         ul { list-style: none; padding: 0; margin-top: 10px; }
-        li { background: #333; margin: 5px 0; padding: 8px; border-radius: 5px; display: flex; justify-content: space-between; }
+        li { background: #333; margin: 5px 0; padding: 8px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
         .del-btn { background: #e57373; padding: 4px 8px; font-size: 12px; margin: 0; }
         .sms-btn { background: #ffb74d; width: 100%; margin-top: 10px; }
-        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; }
+        
+        /* Индикатор статуса MQTT */
+        .status-container { text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto; }
+        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; transition: 0.3s; }
         .status-dot.connected { background: #81c784; }
-        .status-text { vertical-align: middle; }
+        .status-text { vertical-align: middle; font-weight: bold; }
     </style>
 </head>
 <body>
     <h1>Мониторинг ESP32-S3</h1>
     
-    <!-- Индикатор подключения -->
-    <div style="text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto;">
+    <!-- Статус подключения -->
+    <div class="status-container">
         <span class="status-dot" id="statusDot"></span>
         <span class="status-text" id="statusText">Подключение к MQTT...</span>
     </div>
@@ -44,7 +46,7 @@
             <p><span class="lbl">DS18B20 (2):</span> <span class="val" id="ds2">--</span> °C</p>
             <p><span class="lbl">DS18B20 (3):</span> <span class="val" id="ds3">--</span> °C</p>
             <p><span class="lbl">DHT11:</span> <span class="val" id="dht_t">--</span> °C / <span class="val" id="dht_h">--</span> %</p>
-            <p><span class="lbl">Влага (YL-83):</span> <span class="val" id="rain">--</span></p>
+            <p><span class="lbl">Влага:</span> <span class="val" id="rain">--</span></p>
         </div>
 
         <!-- Питание -->
@@ -70,20 +72,18 @@
             <button onclick="saveThresholds()">Сохранить</button>
         </div>
 
-        <!-- SMS -->
+        <!-- SMS Оповещения -->
         <div class="card">
             <h2>SMS Оповещения</h2>
             <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                 <input type="text" id="phone_input" placeholder="+7..." style="width: 100%;">
                 <button onclick="addPhone()">+</button>
             </div>
-            <ul id="phone_list"></ul>
+            <ul id="phone_list">
+                <li style="color: #888; font-size: 12px;">Загрузка списка...</li>
+            </ul>
             <button class="sms-btn" onclick="testSms()">📩 Отправить тест SMS</button>
         </div>
-    </div>
-    
-    <div style="text-align: center; margin-top: 20px;">
-        <a href="/history" style="font-size: 1.2em;">📜 История показаний</a>
     </div>
 
     <script>
@@ -92,20 +92,23 @@
         const MQTT_PREFIX = "MonitorESP32-002";
         const TOPIC_STATUS = MQTT_PREFIX + "/status";
         const TOPIC_CMD = MQTT_PREFIX + "/cmd";
+        const TOPIC_PHONES = MQTT_PREFIX + "/phones";
         // ====================================================
 
         let client;
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
 
-        // Функция для обновления данных на странице
+        // Функция обновления данных с датчиков
         function updateUI(data) {
-            // Датчики
-            document.getElementById('ds1').textContent = data.ds ? data.ds.toFixed(2) : '--';
-            document.getElementById('ds2').textContent = data.ds2 ? data.ds2.toFixed(2) : '--';
-            document.getElementById('ds3').textContent = data.ds3 ? data.ds3.toFixed(2) : '--';
-            document.getElementById('dht_t').textContent = data.dht_t ? data.dht_t.toFixed(1) : '--';
-            document.getElementById('dht_h').textContent = data.dht_h ? data.dht_h.toFixed(0) : '--';
+            // Температуры
+            document.getElementById('ds1').textContent = data.ds !== undefined ? data.ds.toFixed(2) : '--';
+            document.getElementById('ds2').textContent = data.ds2 !== undefined ? data.ds2.toFixed(2) : '--';
+            document.getElementById('ds3').textContent = data.ds3 !== undefined ? data.ds3.toFixed(2) : '--';
+            
+            // DHT11
+            document.getElementById('dht_t').textContent = data.dht_t !== undefined ? data.dht_t.toFixed(1) : '--';
+            document.getElementById('dht_h').textContent = data.dht_h !== undefined ? data.dht_h.toFixed(0) : '--';
             
             // Влага
             const rainEl = document.getElementById('rain');
@@ -119,34 +122,61 @@
 
             // Питание
             document.getElementById('power').textContent = data.extPower ? 'Внешнее' : 'Батарея';
-            document.getElementById('batt').textContent = data.batt ? data.batt.toFixed(2) : '--';
-            document.getElementById('batt_pct').textContent = data.batt_pct ? data.batt_pct.toFixed(0) : '--';
+            document.getElementById('batt').textContent = data.batt !== undefined ? data.batt.toFixed(2) : '--';
+            document.getElementById('batt_pct').textContent = data.batt_pct !== undefined ? data.batt_pct.toFixed(0) : '--';
 
             // Сеть
             document.getElementById('gsm_status').textContent = data.gsmConnected ? 'Подключено' : 'Нет сети';
             document.getElementById('gsm_ip').textContent = data.modem_ip || '--';
-            document.getElementById('gsm_signal').textContent = data.gsm || '--';
+            document.getElementById('gsm_signal').textContent = data.gsm !== undefined ? data.gsm : '--';
             
             // GPS
-            if (data.gpsValid) {
+            if (data.gpsValid && data.gps_lat && data.gps_lon) {
                 document.getElementById('gps').textContent = `${data.gps_lat.toFixed(4)}, ${data.gps_lon.toFixed(4)}`;
             } else {
                 document.getElementById('gps').textContent = 'Поиск...';
             }
 
-            // Пороги
+            // Синхронизация полей порогов (если пользователь их не меняет прямо сейчас)
             if (document.activeElement !== document.getElementById('in_min')) {
-                document.getElementById('in_min').value = data.t_min;
+                document.getElementById('in_min').value = data.t_min !== undefined ? data.t_min : '';
             }
             if (document.activeElement !== document.getElementById('in_max')) {
-                document.getElementById('in_max').value = data.t_max;
+                document.getElementById('in_max').value = data.t_max !== undefined ? data.t_max : '';
+            }
+        }
+
+        // Обновление списка телефонов
+        function updatePhoneList(payload) {
+            const listEl = document.getElementById('phone_list');
+            listEl.innerHTML = '';
+            
+            try {
+                const data = JSON.parse(payload);
+                const phones = data.phones || [];
+                
+                if (phones.length === 0) {
+                    listEl.innerHTML = '<li style="color: #888; font-size: 14px;">Нет сохраненных номеров</li>';
+                    return;
+                }
+
+                phones.forEach((phone, index) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span>${phone}</span> 
+                        <button class="del-btn" onclick="deletePhone(${index})">X</button>
+                    `;
+                    listEl.appendChild(li);
+                });
+            } catch (e) {
+                listEl.innerHTML = '<li style="color: #e57373;">Ошибка парсинга списка</li>';
             }
         }
 
         // Подключение к MQTT
         function connectMQTT() {
             client = mqtt.connect(MQTT_BROKER, {
-                clientId: 'web_' + Math.random().toString(16).slice(2, 8),
+                clientId: 'github_web_' + Math.random().toString(16).slice(2, 8),
                 clean: true,
                 connectTimeout: 10000,
                 reconnectPeriod: 5000,
@@ -155,8 +185,14 @@
             client.on('connect', () => {
                 console.log('MQTT Connected');
                 statusDot.classList.add('connected');
-                statusText.textContent = 'Подключено к MQTT';
+                statusText.textContent = 'Подключено к серверу';
+                
+                // Подписываемся на статус и на список телефонов
                 client.subscribe(TOPIC_STATUS, { qos: 0 });
+                client.subscribe(TOPIC_PHONES, { qos: 0 });
+                
+                // Просим плату прислать актуальный список телефонов
+                client.publish(TOPIC_CMD, 'get_phones');
             });
 
             client.on('reconnect', () => {
@@ -169,40 +205,38 @@
                 statusText.textContent = 'Связь потеряна';
             });
 
-            client.on('error', (err) => {
-                console.error('MQTT Error:', err);
-                statusDot.classList.remove('connected');
-                statusText.textContent = 'Ошибка MQTT';
-            });
-
             client.on('message', (topic, payload) => {
                 if (topic === TOPIC_STATUS) {
                     try {
                         const data = JSON.parse(payload.toString());
                         updateUI(data);
-                    } catch (e) {
-                        console.error('JSON Parse Error:', e);
-                    }
+                    } catch (e) { console.error('JSON Error:', e); }
+                } 
+                else if (topic === TOPIC_PHONES) {
+                    updatePhoneList(payload.toString());
                 }
             });
         }
 
-        // Отправка команд
+        // Отправка команд на ESP32
         function publishCmd(cmd) {
             if (client && client.connected) {
                 client.publish(TOPIC_CMD, cmd);
+            } else {
+                alert('Нет связи с платой!');
             }
         }
 
-        // Сохранение порогов
+        // Действия с интерфейса
         function saveThresholds() {
             const min = document.getElementById('in_min').value;
             const max = document.getElementById('in_max').value;
-            publishCmd(`set_thresh:${min},${max}`);
-            alert('Пороги отправлены!');
+            if(min && max) {
+                publishCmd(`set_thresh:${min},${max}`);
+                alert('Команда на сохранение порогов отправлена!');
+            }
         }
 
-        // Добавление телефона
         function addPhone() {
             const phone = document.getElementById('phone_input').value.trim();
             if (!phone) return;
@@ -210,15 +244,20 @@
             document.getElementById('phone_input').value = '';
         }
 
-        // Удаление телефона
         function deletePhone(index) {
             publishCmd(`del_phone:${index}`);
         }
 
-        // Тест SMS
+        // ТЕСТ SMS С ПИН-КОДОМ
         function testSms() {
-            publishCmd('test_sms'); // Или просто команда для отправки SMS
-            alert('Команда на отправку тестового SMS отправлена!');
+            const pin = prompt("Введите PIN-код для отправки теста:");
+            
+            if (pin === "1111") {
+                publishCmd('test_sms');
+                alert('Команда отправлена!');
+            } else if (pin !== null) {
+                alert('Неверный PIN-код!');
+            }
         }
 
         // Запуск
