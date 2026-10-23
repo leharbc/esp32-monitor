@@ -41,6 +41,7 @@
         
         let client;
         let historyData = [];
+        let isDataReceived = false;
 
         client = mqtt.connect(MQTT_BROKER, { clientId: 'web_hist_' + Math.random().toString(16).slice(2, 8), clean: true });
         
@@ -56,18 +57,27 @@
                 const lines = payload.toString().split('\n');
                 lines.forEach(line => { if(line.trim()) historyData.push(line); });
             } else if (topic === TOPIC_HIST_END) {
+                isDataReceived = true;
                 renderTable();
             }
         });
 
+        // ТАЙМАУТ: Если через 3 секунды данных нет, значит история пуста
+        setTimeout(() => {
+            if (!isDataReceived) {
+                document.getElementById('statusText').textContent = 'Нет данных';
+                document.getElementById('table_body').innerHTML = '<tr><td colspan="7">История пока пуста (записи появляются каждые 5 минут)</td></tr>';
+            }
+        }, 3000);
+
         function renderTable() {
             const tbody = document.getElementById('table_body');
             tbody.innerHTML = '';
-            // Берем последние 20 записей
-            const recent = historyData.slice(-20).reverse();
+            const recent = historyData.slice(-20).reverse(); // Берем последние 20 записей
             
             if (recent.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="7">История пуста</td></tr>';
+                document.getElementById('statusText').textContent = 'Загружено: 0 записей';
                 return;
             }
             
