@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>История</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #eee; padding: 20px; }
+        h1 { color: #4fc3f7; text-align: center; }
+        .table-wrapper { max-height: 500px; overflow-y: auto; max-width: 800px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; background: #1e1e1e; }
+        th, td { padding: 10px; text-align: center; border-bottom: 1px solid #333; font-size: 14px; }
+        th { background: #333; color: #4fc3f7; position: sticky; top: 0; }
+        a { color: #4fc3f7; text-decoration: none; display: block; text-align: center; margin-top: 20px; font-size: 1.2em; }
+        .status-container { text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto; }
+        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; transition: 0.3s; }
+        .status-dot.connected { background: #81c784; }
+    </style>
+</head>
+<body>
+    <h1>История</h1>
+    <div class="status-container">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Загрузка...</span>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Время</th><th>DS1</th><th>DS2</th><th>DS3</th><th>DHT</th><th>Влаж.</th><th>Дождь</th></tr></thead>
+            <tbody id="table_body"><tr><td colspan="7">Ожидание данных...</td></tr></tbody>
+        </table>
+    </div>
+    <a href="index.html">← На главную</a>
+
+    <script>
+        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
+        const MQTT_PREFIX = "MonitorESP32-002";
+        const TOPIC_CMD = MQTT_PREFIX + "/cmd";
+        const TOPIC_HIST = MQTT_PREFIX + "/history";
+        const TOPIC_HIST_END = MQTT_PREFIX + "/history_end";
+        
+        let client;
+        let historyData = [];
+
+        client = mqtt.connect(MQTT_BROKER, { clientId: 'web_hist_' + Math.random().toString(16).slice(2, 8), clean: true });
+        
+        client.on('connect', () => {
+            document.getElementById('statusDot').classList.add('connected');
+            document.getElementById('statusText').textContent = 'Подключено, запрос данных...';
+            client.subscribe([TOPIC_HIST, TOPIC_HIST_END]);
+            client.publish(TOPIC_CMD, 'get_history');
+        });
+
+        client.on('message', (topic, payload) => {
+            if (topic === TOPIC_HIST) {
+                const lines = payload.toString().split('\n');
+                lines.forEach(line => { if(line.trim()) historyData.push(line); });
+            } else if (topic === TOPIC_HIST_END) {
+                renderTable();
+            }
+        });
+
+        function renderTable() {
+            const tbody = document.getElementById('table_body');
+            tbody.innerHTML = '';
+            // Берем последние 20 записей
+            const recent = historyData.slice(-20).reverse();
+            
+            if (recent.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7">История пуста</td></tr>';
+                return;
+            }
+            
+            recent.forEach(line => {
+                const p = line.split(',');
+                if (p.length >= 7) {
+                    tbody.innerHTML += `<tr>
+                        <td>${p[0]}</td><td>${p[1]}</td><td>${p[2]}</td>
+                        <td>${p[3]}</td><td>${p[4]}</td><td>${p[5]}</td><td>${p[6]}</td>
+                    </tr>`;
+                }
+            });
+            document.getElementById('statusText').textContent = 'Загружено: ' + recent.length + ' записей';
+        }
+    </script>
+</body>
+</html>
