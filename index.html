@@ -11,30 +11,24 @@
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; max-width: 1000px; margin: 0 auto; }
         .card { background: #1e1e1e; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .val { font-size: 1.4em; font-weight: bold; color: #81c784; }
-        .val.alarm { color: #e57373; }
         .val.wet { color: #4fc3f7; }
         .lbl { color: #aaa; font-size: 0.9em; }
         button { background: #4fc3f7; color: #000; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; font-size: 1em;}
-        button:hover { background: #29b6f6; }
         a { color: #4fc3f7; text-decoration: none; display: block; margin-top: 15px; text-align: center; font-size: 1.2em; }
-        
         .status-container { text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto; }
         .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; transition: 0.3s; }
         .status-dot.connected { background: #81c784; }
-        .status-text { vertical-align: middle; font-weight: bold; }
     </style>
 </head>
 <body>
     <h1>Мониторинг ESP32-S3</h1>
     
-    <!-- Индикатор подключения -->
     <div class="status-container">
         <span class="status-dot" id="statusDot"></span>
         <span class="status-text" id="statusText">Подключение к MQTT...</span>
     </div>
 
     <div class="grid">
-        <!-- Датчики -->
         <div class="card">
             <h2>Датчики</h2>
             <p><span class="lbl">DS18B20 (1):</span> <span class="val" id="ds1">--</span> °C</p>
@@ -44,18 +38,17 @@
             <p><span class="lbl">Влага:</span> <span class="val" id="rain">--</span></p>
         </div>
 
-        <!-- Питание и Сеть -->
         <div class="card">
             <h2>Питание и Сеть</h2>
+            <!-- ИСПРАВЛЕНО: поменяли местами -->
             <p><span class="lbl">Источник:</span> <span class="val" id="power">--</span></p>
             <p><span class="lbl">Батарея:</span> <span class="val" id="batt">--</span> В (<span id="batt_pct">--</span>%)</p>
             <p><span class="lbl">4G IP:</span> <span class="val" id="gsm_ip">--</span></p>
             <p><span class="lbl">Сигнал:</span> <span class="val" id="gsm_signal">--</span></p>
         </div>
 
-        <!-- Время и Управление -->
         <div class="card">
-            <h2>Время и Управление</h2>
+            <h2>Время</h2>
             <p><span class="lbl">Uptime:</span> <span class="val" id="uptime">--</span></p>
             <p><span class="lbl">Обновлено:</span> <span class="val" id="time">--</span></p>
             <button onclick="window.location.href='phones.html'">📱 Настройки SMS</button>
@@ -64,88 +57,48 @@
     </div>
 
     <script>
-        // ================== НАСТРОЙКИ MQTT ==================
         const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
         const MQTT_PREFIX = "MonitorESP32-002";
         const TOPIC_STATUS = MQTT_PREFIX + "/status";
-        // ====================================================
-
         let client;
 
         function updateUI(data) {
-            // Безопасный вывод (если датчик не найден - покажет "--")
             const getV = (val, dec) => (val !== undefined && val !== null && !isNaN(val)) ? Number(val).toFixed(dec) : '--';
             
-            // Датчики
             document.getElementById('ds1').textContent = getV(data.ds, 2);
             document.getElementById('ds2').textContent = getV(data.ds2, 2);
             document.getElementById('ds3').textContent = getV(data.ds3, 2);
             document.getElementById('dht_t').textContent = getV(data.dht_t, 1);
             document.getElementById('dht_h').textContent = getV(data.dht_h, 0);
             
-            // Влага
             const rainEl = document.getElementById('rain');
-            if (data.rain === 1) { 
-                rainEl.textContent = 'Влажно'; 
-                rainEl.className = 'val wet'; 
-            } else { 
-                rainEl.textContent = 'Сухо'; 
-                rainEl.className = 'val'; 
-            }
+            if (data.rain === 1) { rainEl.textContent = 'Влажно'; rainEl.className = 'val wet'; } 
+            else { rainEl.textContent = 'Сухо'; rainEl.className = 'val'; }
 
-            // Питание (ИСПРАВЛЕНО: поменяли местами)
+            // ИСПРАВЛЕНО: поменяли местами
             document.getElementById('power').textContent = data.extPower ? 'Батарея' : 'Внешнее';
             document.getElementById('batt').textContent = getV(data.batt, 2);
             document.getElementById('batt_pct').textContent = getV(data.batt_pct, 0);
             
-            // Сеть
             document.getElementById('gsm_ip').textContent = data.modem_ip || '--';
             document.getElementById('gsm_signal').textContent = data.gsm !== undefined ? data.gsm : '--';
             
-            // Время
             document.getElementById('uptime').textContent = data.uptime || '--';
-            document.getElementById('time').textContent = data.time || '--';
+            // Если плата не смогла синхронизировать время, покажет локальное время браузера
+            document.getElementById('time').textContent = (data.time && data.time !== 'Sync...') ? data.time : new Date().toLocaleTimeString('ru-RU');
         }
 
-        function connectMQTT() {
-            client = mqtt.connect(MQTT_BROKER, {
-                clientId: 'github_web_' + Math.random().toString(16).slice(2, 8),
-                clean: true,
-                connectTimeout: 10000,
-                reconnectPeriod: 5000,
-            });
-
-            client.on('connect', () => {
-                console.log('MQTT Connected');
-                document.getElementById('statusDot').classList.add('connected');
-                document.getElementById('statusText').textContent = 'Подключено';
-                client.subscribe(TOPIC_STATUS, { qos: 0 });
-            });
-
-            client.on('reconnect', () => {
-                document.getElementById('statusDot').classList.remove('connected');
-                document.getElementById('statusText').textContent = 'Переподключение...';
-            });
-
-            client.on('close', () => {
-                document.getElementById('statusDot').classList.remove('connected');
-                document.getElementById('statusText').textContent = 'Связь потеряна';
-            });
-
-            client.on('message', (topic, payload) => {
-                if (topic === TOPIC_STATUS) {
-                    try {
-                        const data = JSON.parse(payload.toString());
-                        updateUI(data);
-                    } catch (e) {
-                        console.error("Ошибка парсинга JSON", e);
-                    }
-                }
-            });
-        }
-
-        // Запуск
-        connectMQTT();
+        client = mqtt.connect(MQTT_BROKER, { clientId: 'web_' + Math.random().toString(16).slice(2, 8), clean: true });
+        client.on('connect', () => {
+            document.getElementById('statusDot').classList.add('connected');
+            document.getElementById('statusText').textContent = 'Подключено';
+            client.subscribe(TOPIC_STATUS);
+        });
+        client.on('message', (topic, payload) => {
+            if (topic === TOPIC_STATUS) {
+                try { updateUI(JSON.parse(payload.toString())); } catch (e) {}
+            }
+        });
     </script>
 </body>
 </html>
