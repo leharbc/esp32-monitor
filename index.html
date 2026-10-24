@@ -76,7 +76,7 @@
             else { rainEl.textContent = 'Сухо'; rainEl.className = 'val'; }
 
             // ИСПРАВЛЕНО: поменяли местами
-            document.getElementById('power').textContent = data.extPower ? 'Батарея' : 'Внешнее';
+            document.getElementById('power').textContent = data.extPower ? 'Внешнее' : 'Батарея';
             document.getElementById('batt').textContent = getV(data.batt, 2);
             document.getElementById('batt_pct').textContent = getV(data.batt_pct, 0);
             
