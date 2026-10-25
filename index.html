@@ -4,101 +4,238 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мониторинг ESP32-S3</title>
+    <!-- Подключаем библиотеку MQTT через WebSockets -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #eee; margin: 0; padding: 20px; }
-        h1 { color: #4fc3f7; text-align: center; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; max-width: 1000px; margin: 0 auto; }
-        .card { background: #1e1e1e; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .val { font-size: 1.4em; font-weight: bold; color: #81c784; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #121212;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #4fc3f7;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .status-container {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: #1e1e1e;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .status-badge.connected { color: #81c784; }
+        .status-badge.error { color: #e57373; }
+        .status-badge.connecting { color: #ffb74d; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1000px;
+            margin: 0 auto 25px auto;
+        }
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+        .lbl { color: #aaa; }
+        .val { font-weight: bold; color: #81c784; }
         .val.wet { color: #4fc3f7; }
-        .lbl { color: #aaa; font-size: 0.9em; }
-        button { background: #4fc3f7; color: #000; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; font-size: 1em;}
-        a { color: #4fc3f7; text-decoration: none; display: block; margin-top: 15px; text-align: center; font-size: 1.2em; }
-        .status-container { text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto; }
-        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; transition: 0.3s; }
-        .status-dot.connected { background: #81c784; }
+        
+        .buttons {
+            max-width: 600px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .btn {
+            display: block;
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-size: 1.1em;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-sms { background: #4fc3f7; color: #000; }
+        .btn-history { background: #81c784; color: #000; }
     </style>
 </head>
 <body>
+
     <h1>Мониторинг ESP32-S3</h1>
     
     <div class="status-container">
-        <span class="status-dot" id="statusDot"></span>
-        <span class="status-text" id="statusText">Подключение к MQTT...</span>
+        <div id="mqtt-status" class="status-badge connecting">🟡 Подключение...</div>
     </div>
 
     <div class="grid">
+        <!-- Датчики -->
         <div class="card">
             <h2>Датчики</h2>
-            <p><span class="lbl">DS18B20 (1):</span> <span class="val" id="ds1">--</span> °C</p>
-            <p><span class="lbl">DS18B20 (2):</span> <span class="val" id="ds2">--</span> °C</p>
-            <p><span class="lbl">DS18B20 (3):</span> <span class="val" id="ds3">--</span> °C</p>
-            <p><span class="lbl">DHT11:</span> <span class="val" id="dht_t">--</span> °C / <span class="val" id="dht_h">--</span> %</p>
-            <p><span class="lbl">Влага:</span> <span class="val" id="rain">--</span></p>
+            <div class="row"><span class="lbl">DS18B20 (1):</span> <span class="val" id="ds1">--</span> °C</div>
+            <div class="row"><span class="lbl">DS18B20 (2):</span> <span class="val" id="ds2">--</span> °C</div>
+            <div class="row"><span class="lbl">DS18B20 (3):</span> <span class="val" id="ds3">--</span> °C</div>
+            <div class="row"><span class="lbl">DHT11:</span> <span class="val" id="dht">--</span> °C / <span class="val" id="hum">--</span> %</div>
+            <div class="row"><span class="lbl">Влага:</span> <span class="val" id="water">--</span></div>
         </div>
 
+        <!-- Питание и Сеть -->
         <div class="card">
             <h2>Питание и Сеть</h2>
-            <!-- ИСПРАВЛЕНО: поменяли местами -->
-            <p><span class="lbl">Источник:</span> <span class="val" id="power">--</span></p>
-            <p><span class="lbl">Батарея:</span> <span class="val" id="batt">--</span> В (<span id="batt_pct">--</span>%)</p>
-            <p><span class="lbl">4G IP:</span> <span class="val" id="gsm_ip">--</span></p>
-            <p><span class="lbl">Сигнал:</span> <span class="val" id="gsm_signal">--</span></p>
+            <div class="row"><span class="lbl">Источник:</span> <span class="val" id="power">--</span></div>
+            <div class="row"><span class="lbl">Батарея:</span> <span class="val" id="batt">--</span> В (<span id="batt_pct">--</span>%)</div>
+            <div class="row"><span class="lbl">4G IP:</span> <span class="val" id="ip">--</span></div>
+            <div class="row"><span class="lbl">Сигнал:</span> <span class="val" id="signal">--</span> (CSQ)</div>
         </div>
 
+        <!-- Время -->
         <div class="card">
             <h2>Время</h2>
-            <p><span class="lbl">Uptime:</span> <span class="val" id="uptime">--</span></p>
-            <p><span class="lbl">Обновлено:</span> <span class="val" id="time">--</span></p>
-            <button onclick="window.location.href='phones.html'">📱 Настройки SMS</button>
-            <button onclick="window.location.href='history.html'" style="background:#81c784;">📜 История (20 строк)</button>
+            <div class="row"><span class="lbl">Uptime:</span> <span class="val" id="uptime">--</span></div>
+            <div class="row"><span class="lbl">Обновлено:</span> <span class="val" id="time">--</span></div>
         </div>
     </div>
 
+    <div class="buttons">
+        <!-- Если GitHub Pages, кнопки должны вести на локальный IP платы, когда вы находитесь в её сети -->
+        <a href="http://192.168.4.1/phones" class="btn btn-sms" target="_blank">📱 Настройки SMS</a>
+        <a href="http://192.168.4.1/history" class="btn btn-history" target="_blank">📜 История (20 строк)</a>
+    </div>
+
     <script>
-        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
-        const MQTT_PREFIX = "MonitorESP32-002";
-        const TOPIC_STATUS = MQTT_PREFIX + "/status";
-        let client;
+        // Настройки MQTT
+        const MQTT_URL = 'wss://broker.hivemq.com:8884/mqtt';
+        const TOPIC_STATUS = 'MonitorESP32-002/status';
+        
+        const statusBadge = document.getElementById('mqtt-status');
+        let client = null;
 
-        function updateUI(data) {
-            const getV = (val, dec) => (val !== undefined && val !== null && !isNaN(val)) ? Number(val).toFixed(dec) : '--';
-            
-            document.getElementById('ds1').textContent = getV(data.ds, 2);
-            document.getElementById('ds2').textContent = getV(data.ds2, 2);
-            document.getElementById('ds3').textContent = getV(data.ds3, 2);
-            document.getElementById('dht_t').textContent = getV(data.dht_t, 1);
-            document.getElementById('dht_h').textContent = getV(data.dht_h, 0);
-            
-            const rainEl = document.getElementById('rain');
-            if (data.rain === 1) { rainEl.textContent = 'Влажно'; rainEl.className = 'val wet'; } 
-            else { rainEl.textContent = 'Сухо'; rainEl.className = 'val'; }
-
-            // ИСПРАВЛЕНО: поменяли местами
-            document.getElementById('power').textContent = data.extPower ? 'Внешнее' : 'Батарея';
-            document.getElementById('batt').textContent = getV(data.batt, 2);
-            document.getElementById('batt_pct').textContent = getV(data.batt_pct, 0);
-            
-            document.getElementById('gsm_ip').textContent = data.modem_ip || '--';
-            document.getElementById('gsm_signal').textContent = data.gsm !== undefined ? data.gsm : '--';
-            
-            document.getElementById('uptime').textContent = data.uptime || '--';
-            // Если плата не смогла синхронизировать время, покажет локальное время браузера
-            document.getElementById('time').textContent = (data.time && data.time !== 'Sync...') ? data.time : new Date().toLocaleTimeString('ru-RU');
+        // Безопасная функция форматирования (защита от null и ошибок)
+        function fmt(value, digits) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
+            return Number(value).toFixed(digits);
         }
 
-        client = mqtt.connect(MQTT_BROKER, { clientId: 'web_' + Math.random().toString(16).slice(2, 8), clean: true });
-        client.on('connect', () => {
-            document.getElementById('statusDot').classList.add('connected');
-            document.getElementById('statusText').textContent = 'Подключено';
-            client.subscribe(TOPIC_STATUS);
-        });
-        client.on('message', (topic, payload) => {
-            if (topic === TOPIC_STATUS) {
-                try { updateUI(JSON.parse(payload.toString())); } catch (e) {}
+        // Функция обновления интерфейса
+        function updateUI(data) {
+            // Датчики
+            document.getElementById('ds1').textContent = fmt(data.ds, 2);
+            document.getElementById('ds2').textContent = fmt(data.ds2, 2);
+            document.getElementById('ds3').textContent = fmt(data.ds3, 2);
+            document.getElementById('dht').textContent = fmt(data.dht_t, 2);
+            document.getElementById('hum').textContent = fmt(data.dht_h, 1);
+            
+            // Влага (rain: 1 = влажно, 0 = сухо)
+            const waterEl = document.getElementById('water');
+            if (data.rain === 1) {
+                waterEl.textContent = 'Влажно';
+                waterEl.classList.add('wet');
+            } else {
+                waterEl.textContent = 'Сухо';
+                waterEl.classList.remove('wet');
             }
-        });
+
+            // Питание и сеть
+            document.getElementById('power').textContent = data.extPower ? 'Внешнее' : 'Батарея';
+            document.getElementById('batt').textContent = fmt(data.batt, 2);
+            document.getElementById('batt_pct').textContent = fmt(data.batt_pct, 0);
+            document.getElementById('ip').textContent = data.modem_ip || '--';
+            document.getElementById('signal').textContent = data.gsm || '--';
+
+            // Время
+            document.getElementById('uptime').textContent = data.uptime || '--';
+            document.getElementById('time').textContent = data.time || '--';
+        }
+
+        // Подключение к MQTT
+        function connectMQTT() {
+            statusBadge.className = 'status-badge connecting';
+            statusBadge.innerHTML = '🟡 Подключение...';
+
+            // clientId генерируется случайно, чтобы при обновлении страницы не было конфликтов
+            const clientId = "WebUI_" + Math.random().toString(16).substr(2, 8);
+            
+            client = mqtt.connect(MQTT_URL, {
+                clientId: clientId,
+                keepalive: 60,
+                clean: true,
+                reconnectPeriod: 5000 // Пытаться переподключиться каждые 5 секунд
+            });
+
+            client.on('connect', () => {
+                console.log('MQTT Connected');
+                statusBadge.className = 'status-badge connected';
+                statusBadge.innerHTML = '🟢 Подключено';
+                
+                client.subscribe(TOPIC_STATUS, (err) => {
+                    if (!err) {
+                        console.log('Подписка оформлена: ' + TOPIC_STATUS);
+                    } else {
+                        console.error('Ошибка подписки:', err);
+                    }
+                });
+            });
+
+            client.on('message', (topic, message) => {
+                if (topic === TOPIC_STATUS) {
+                    try {
+                        const data = JSON.parse(message.toString());
+                        updateUI(data);
+                    } catch (e) {
+                        console.error("Ошибка парсинга JSON:", e);
+                    }
+                }
+            });
+
+            client.on('error', (err) => {
+                console.error('MQTT Error:', err);
+                statusBadge.className = 'status-badge error';
+                statusBadge.innerHTML = '🔴 Ошибка MQTT';
+            });
+
+            client.on('offline', () => {
+                statusBadge.className = 'status-badge error';
+                statusBadge.innerHTML = '🔴 Нет связи';
+            });
+
+            client.on('reconnect', () => {
+                statusBadge.className = 'status-badge connecting';
+                statusBadge.innerHTML = '🟡 Переподключение...';
+            });
+        }
+
+        // Запуск при загрузке страницы
+        window.onload = connectMQTT;
     </script>
 </body>
 </html>
