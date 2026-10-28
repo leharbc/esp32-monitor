@@ -1,97 +1,109 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>История</title>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #eee; padding: 20px; }
-        h1 { color: #4fc3f7; text-align: center; }
-        .table-wrapper { max-height: 500px; overflow-y: auto; max-width: 800px; margin: 0 auto; }
-        table { width: 100%; border-collapse: collapse; background: #1e1e1e; }
-        th, td { padding: 10px; text-align: center; border-bottom: 1px solid #333; font-size: 14px; }
-        th { background: #333; color: #4fc3f7; position: sticky; top: 0; }
-        a { color: #4fc3f7; text-decoration: none; display: block; text-align: center; margin-top: 20px; font-size: 1.2em; }
-        .status-container { text-align: center; margin-bottom: 20px; background: #1e1e1e; padding: 10px; border-radius: 10px; max-width: 300px; margin-left: auto; margin-right: auto; }
-        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #e57373; margin-right: 8px; vertical-align: middle; transition: 0.3s; }
-        .status-dot.connected { background: #81c784; }
-    </style>
-</head>
-<body>
-    <h1>История</h1>
-    <div class="status-container">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Загрузка...</span>
-    </div>
-    <div class="table-wrapper">
-        <table>
-            <thead><tr><th>Время</th><th>DS1</th><th>DS2</th><th>DS3</th><th>DHT</th><th>Влаж.</th><th>Дождь</th></tr></thead>
-            <tbody id="table_body"><tr><td colspan="7">Ожидание данных...</td></tr></tbody>
-        </table>
-    </div>
-    <a href="index.html">← На главную</a>
-
-    <script>
-        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
-        const MQTT_PREFIX = "MonitorESP32-002";
-        const TOPIC_CMD = MQTT_PREFIX + "/cmd";
-        const TOPIC_HIST = MQTT_PREFIX + "/history";
-        const TOPIC_HIST_END = MQTT_PREFIX + "/history_end";
-        
-        let client;
-        let historyData = [];
-        let isDataReceived = false;
-
-        client = mqtt.connect(MQTT_BROKER, { clientId: 'web_hist_' + Math.random().toString(16).slice(2, 8), clean: true });
-        
-        client.on('connect', () => {
-            document.getElementById('statusDot').classList.add('connected');
-            document.getElementById('statusText').textContent = 'Подключено, запрос данных...';
-            client.subscribe([TOPIC_HIST, TOPIC_HIST_END]);
-            client.publish(TOPIC_CMD, 'get_history');
-        });
-
-        client.on('message', (topic, payload) => {
-            if (topic === TOPIC_HIST) {
-                const lines = payload.toString().split('\n');
-                lines.forEach(line => { if(line.trim()) historyData.push(line); });
-            } else if (topic === TOPIC_HIST_END) {
-                isDataReceived = true;
-                renderTable();
-            }
-        });
-
-        // ТАЙМАУТ: Если через 3 секунды данных нет, значит история пуста
-        setTimeout(() => {
-            if (!isDataReceived) {
-                document.getElementById('statusText').textContent = 'Нет данных';
-                document.getElementById('table_body').innerHTML = '<tr><td colspan="7">История пока пуста (записи появляются каждые 5 минут)</td></tr>';
-            }
-        }, 3000);
-
-        function renderTable() {
-            const tbody = document.getElementById('table_body');
-            tbody.innerHTML = '';
-            const recent = historyData.slice(-20).reverse(); // Берем последние 20 записей
-            
-            if (recent.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7">История пуста</td></tr>';
-                document.getElementById('statusText').textContent = 'Загружено: 0 записей';
-                return;
-            }
-            
-            recent.forEach(line => {
-                const p = line.split(',');
-                if (p.length >= 7) {
-                    tbody.innerHTML += `<tr>
-                        <td>${p[0]}</td><td>${p[1]}</td><td>${p[2]}</td>
-                        <td>${p[3]}</td><td>${p[4]}</td><td>${p[5]}</td><td>${p[6]}</td>
-                    </tr>`;
-                }
-            });
-            document.getElementById('statusText').textContent = 'Загружено: ' + recent.length + ' записей';
-        }
-    </script>
-</body>
-</html>
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>История показаний ESP32-S3</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+body{font-family:Arial,sans-serif;background:#121212;color:#eee;margin:0;padding:16px}
+h1{color:#4fc3f7;text-align:center;margin:6px 0 12px}
+.tabs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px}
+.tabs button{background:#2a2a2a;color:#eee;border:1px solid #444;padding:9px 16px;border-radius:6px;cursor:pointer;font-size:15px}
+.tabs button.on{background:#4fc3f7;color:#000;border-color:#4fc3f7;font-weight:bold}
+.card{background:#1e1e1e;border-radius:10px;padding:10px 12px;margin:0 auto 14px;max-width:900px;position:relative}
+.card h2{margin:0 0 6px;font-size:16px;color:#bbb;font-weight:normal}
+canvas{width:100%;height:210px;display:block;touch-action:pan-y}
+.leg{font-size:13px;color:#ccc;margin-top:4px}.leg span{margin-right:14px;white-space:nowrap}.leg i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:#000c;border:1px solid #555;border-radius:6px;padding:5px 8px;font-size:12px;display:none;white-space:nowrap;z-index:5}
+#info{text-align:center;color:#888;font-size:13px;margin-bottom:10px}
+.badge{display:block;width:max-content;margin:0 auto 8px;padding:6px 14px;border-radius:18px;background:#1e1e1e;font-weight:bold;font-size:14px}
+.badge.ok{color:#81c784}.badge.err{color:#e57373}.badge.wait{color:#ffb74d}
+a{color:#4fc3f7;text-decoration:none;display:block;text-align:center;margin-top:14px;font-size:1.1em}
+.tw{max-height:320px;overflow-y:auto}table{width:100%;border-collapse:collapse}th,td{padding:6px;text-align:center;border-bottom:1px solid #333;font-size:13px}th{background:#333;color:#4fc3f7;position:sticky;top:0}
+</style></head><body>
+<h1>История показаний</h1>
+<div class="tabs" id="tabs"><button data-r="hour">1 час</button><button data-r="day" class="on">1 день</button><button data-r="week">1 неделя</button><button data-r="month">1 месяц</button></div>
+<div id="mqtt" class="badge wait">🟡 Подключение...</div>
+<div id="info">Ожидание данных...</div>
+<div class="card"><h2>Температура, °C</h2><canvas id="c_t"></canvas><div class="leg" id="l_t"></div></div>
+<div class="card"><h2>Влажность воздуха (DHT11), %</h2><canvas id="c_h"></canvas><div class="leg" id="l_h"></div></div>
+<div class="card"><h2>Аккумулятор, В</h2><canvas id="c_b"></canvas><div class="leg" id="l_b"></div></div>
+<div class="card"><h2>Датчик дождя (1 = мокро)</h2><canvas id="c_r" style="height:110px"></canvas></div>
+<div class="card"><h2>Последние записи (самые свежие сверху)</h2><div class="tw"><table><thead><tr><th>Время</th><th>DS1</th><th>DS2</th><th>DS3</th><th>DHT</th><th>Влаж.</th><th>Дождь</th><th>Бат., В</th><th>Питание</th></tr></thead><tbody id="tb"></tbody></table></div></div>
+<a href="index.html">← На главную</a>
+<div class="tip" id="tip"></div>
+<script>
+const COL=['#81c784','#ffb74d','#e57373','#4fc3f7'];
+let rows=[],range='day',charts=[];
+function num(s){if(s===undefined||s===''||s==='--')return null;const v=parseFloat(s);return isNaN(v)?null:v}
+function tm(s){return new Date(s.replace(' ','T')).getTime()}
+function pts(i){return rows.map(r=>({t:r.t,v:r.v[i]}))}
+function fmtT(t,span){const d=new Date(t),p=n=>String(n).padStart(2,'0');
+ return span>2*86400e3?p(d.getDate())+'.'+p(d.getMonth()+1):p(d.getHours())+':'+p(d.getMinutes())}
+function fmtFull(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getDate())+'.'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes())}
+function Chart(cv,series,dec,step){this.cv=cv;this.s=series;this.dec=dec;this.step=step;this.hv=null;
+ const me=this;cv.addEventListener('pointermove',e=>me.hover(e));cv.addEventListener('pointerleave',()=>{me.hv=null;me.draw();document.getElementById('tip').style.display='none'})}
+Chart.prototype.draw=function(){
+ const cv=this.cv,dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
+ const c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+ const L=42,R=8,T=8,B=22;let t0=1e18,t1=-1e18,v0=1e18,v1=-1e18;
+ this.s.forEach(s=>s.p.forEach(p=>{if(p.v===null)return;t0=Math.min(t0,p.t);t1=Math.max(t1,p.t);v0=Math.min(v0,p.v);v1=Math.max(v1,p.v)}));
+ c.font='11px Arial';c.fillStyle='#888';
+ if(t0>t1){c.fillText('нет данных за этот период',L+10,H/2);this.m=null;return}
+ if(v0===v1){v0-=1;v1+=1}const pad=(v1-v0)*0.08;v0-=pad;v1+=pad;
+ const X=t=>L+(t-t0)/((t1-t0)||1)*(W-L-R),Y=v=>T+(1-(v-v0)/(v1-v0))*(H-T-B);
+ c.strokeStyle='#333';c.lineWidth=1;c.textAlign='right';
+ for(let i=0;i<=4;i++){const v=v0+(v1-v0)*i/4,y=Y(v);c.beginPath();c.moveTo(L,y);c.lineTo(W-R,y);c.stroke();c.fillText(v.toFixed(this.dec),L-4,y+4)}
+ c.textAlign='center';const span=t1-t0;
+ for(let i=0;i<=4;i++){const t=t0+span*i/4,x=X(t);c.fillText(fmtT(t,span),Math.min(Math.max(x,L+14),W-R-14),H-6)}
+ this.s.forEach(s=>{c.strokeStyle=s.c;c.lineWidth=1.8;c.beginPath();let pen=false,px=0,py=0;
+  s.p.forEach(p=>{if(p.v===null){pen=false;return}const x=X(p.t),y=Y(p.v);
+   if(!pen){c.moveTo(x,y);pen=true}else{if(this.step)c.lineTo(x,py);c.lineTo(x,y)}px=x;py=y});c.stroke();
+  if(s.p.length<60){c.fillStyle=s.c;s.p.forEach(p=>{if(p.v!==null){c.beginPath();c.arc(X(p.t),Y(p.v),2,0,7);c.fill()}})}});
+ if(this.hv!==null){const x=X(this.hv);c.strokeStyle='#aaa';c.lineWidth=1;c.beginPath();c.moveTo(x,T);c.lineTo(x,H-B);c.stroke()}
+ this.m={X:X,t0:t0,t1:t1,L:L,R:R,W:W}};
+Chart.prototype.hover=function(e){if(!this.m)return;const r=this.cv.getBoundingClientRect(),px=e.clientX-r.left,m=this.m;
+ const t=m.t0+(px-m.L)/((m.W-m.L-m.R)||1)*(m.t1-m.t0);let best=null,bd=1e18;
+ rows.forEach(q=>{const d=Math.abs(q.t-t);if(d<bd){bd=d;best=q}});if(!best)return;this.hv=best.t;this.draw();
+ const tip=document.getElementById('tip');let h='<b>'+fmtFull(best.t)+'</b>';
+ this.s.forEach(s=>{const p=s.p.find(z=>z.t===best.t);h+='<br><span style="color:'+s.c+'">'+s.n+':</span> '+(p&&p.v!==null?p.v.toFixed(this.dec):'--')});
+ tip.innerHTML=h;tip.style.display='block';const cr=this.cv.parentElement.getBoundingClientRect();
+ let lx=e.clientX-cr.left+12;if(lx>cr.width-130)lx=e.clientX-cr.left-120;tip.style.left=(cr.left+window.scrollX+lx)+'px';tip.style.top=(r.top+window.scrollY+10)+'px';tip.style.position='absolute'};
+function leg(id,s){document.getElementById(id).innerHTML=s.map(x=>'<span><i style="background:'+x.c+'"></i>'+x.n+'</span>').join('')}
+function render(){
+ const T=[{n:'DS1',c:COL[0],p:pts(0)},{n:'DS2',c:COL[1],p:pts(1)},{n:'DS3',c:COL[2],p:pts(2)},{n:'DHT',c:COL[3],p:pts(3)}];
+ const Hh=[{n:'Влажность',c:COL[3],p:pts(4)}],Bb=[{n:'Батарея, В',c:COL[1],p:pts(5)}],Rr=[{n:'Дождь',c:COL[3],p:pts(6)}];
+ leg('l_t',T);leg('l_h',Hh);leg('l_b',Bb);
+ charts=[new Chart(c_t,T,2,false),new Chart(c_h,Hh,1,false),new Chart(c_b,Bb,2,false),new Chart(c_r,Rr,0,true)];
+ charts.forEach(c=>c.draw())}
+const SPAN={hour:3600e3,day:86400e3,week:7*86400e3,month:30*86400e3};
+let all=new Map(); // время(мс) -> {t,v:[DS1,DS2,DS3,DHT_T,DHT_H,Vbat,дождь],raw}
+function pt(s){s=String(s);if(s.length===16)s+=':00';return new Date(s.replace(' ','T')+'+03:00').getTime()}
+function addHist(arr){for(const r of arr){const t=pt(r[0]);if(isNaN(t))continue;
+ all.set(t,{t:t,v:[r[1],r[2],r[3],r[4],r[5],r[7],r[6]]})}}
+let rt=null;function later(){clearTimeout(rt);rt=setTimeout(load,300)}
+function load(){
+ const now=Date.now(),from=now-SPAN[range];
+ rows=[...all.values()].filter(r=>r.t>=from).sort((a,b)=>a.t-b.t);
+ const last=all.size?Math.max(...all.keys()):0;
+ document.getElementById('info').textContent=rows.length?('Точек: '+rows.length+(last?(' · последняя запись: '+fmtFull(last)):'')):(all.size?'Нет данных за выбранный период':'Ожидание данных от устройства...');
+ render();
+ const f=n=>n===null||n===undefined?'':n;
+ document.getElementById('tb').innerHTML=rows.slice(-60).reverse().map(r=>'<tr><td>'+fmtFull(r.t)+'</td><td>'+[0,1,2,3,4].map(i=>f(r.v[i])).join('</td><td>')+'</td><td>'+(r.v[6]?'Wet':'Dry')+'</td><td>'+f(r.v[5])+'</td></tr>').join('')}
+const T_H24='MonitorESP32-002/history24',T_H30='MonitorESP32-002/history30',T_ST='MonitorESP32-002/status';
+function setBadge(c,t){const b=document.getElementById('mqtt');b.className='badge '+c;b.textContent=t}
+function connect(){
+ const cl=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{clientId:'WebHist_'+Math.random().toString(16).slice(2,10),keepalive:60,clean:true,reconnectPeriod:5000});
+ cl.on('connect',()=>{setBadge('ok','🟢 Подключено');cl.subscribe([T_H30,T_H24,T_ST])});
+ cl.on('reconnect',()=>setBadge('wait','🟡 Переподключение...'));
+ cl.on('offline',()=>setBadge('err','🔴 Нет связи'));
+ cl.on('error',()=>setBadge('err','🔴 Ошибка MQTT'));
+ cl.on('message',(topic,msg)=>{
+  try{
+   const d=JSON.parse(msg.toString());
+   if(topic===T_H24||topic===T_H30){addHist(d);later()}
+   else if(topic===T_ST&&d.time&&d.time.length>=16){ // свежая точка между часовыми публикациями истории
+    const t=pt(d.time.slice(0,16));const last=all.size?Math.max(...all.keys()):0;
+    if(!isNaN(t)&&t>last+270e3){all.set(t,{t:t,v:[d.ds,d.ds2,d.ds3,d.dht_t,d.dht_h,d.batt,d.rain?1:0]});later()}}
+  }catch(e){console.error(e)}})}
+document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+ range=b.dataset.r;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));load()});
+window.addEventListener('resize',()=>charts.forEach(c=>c.draw()));
+load();connect();
+</script></body></html>
