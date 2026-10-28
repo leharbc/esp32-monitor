@@ -86,8 +86,7 @@
             transition: 0.2s;
         }
         .btn:active { transform: scale(0.98); }
-        .btn-sms { background: #4fc3f7; color: #000; }
-        .btn-history { background: #81c784; color: #000; }
+                .btn-history { background: #81c784; color: #000; }
     </style>
 </head>
 <body>
@@ -109,26 +108,27 @@
             <div class="row"><span class="lbl">Влага:</span> <span class="val" id="water">--</span></div>
         </div>
 
-        <!-- Питание и Сеть -->
+        <!-- Питание -->
         <div class="card">
-            <h2>Питание и Сеть</h2>
+            <h2>Питание</h2>
             <div class="row"><span class="lbl">Источник:</span> <span class="val" id="power">--</span></div>
-            <div class="row"><span class="lbl">Батарея:</span> <span class="val" id="batt">--</span> В (<span id="batt_pct">--</span>%)</div>
-            <div class="row"><span class="lbl">4G IP:</span> <span class="val" id="ip">--</span></div>
-            <div class="row"><span class="lbl">Сигнал:</span> <span class="val" id="signal">--</span> (CSQ)</div>
+            <div class="row"><span class="lbl">Батарея:</span> <span><span class="val" id="batt">--</span> В (<span id="batt_pct">--</span>%)</span></div>
         </div>
 
-        <!-- Время -->
+        <!-- Сеть и время -->
         <div class="card">
-            <h2>Время</h2>
+            <h2>Сеть и Время</h2>
+            <div class="row"><span class="lbl">4G IP:</span> <span class="val" id="ip">--</span></div>
+            <div class="row"><span class="lbl">Сигнал:</span> <span><span class="val" id="signal">--</span> (CSQ)</span></div>
+            <div class="row"><span class="lbl">Интернет через:</span> <span class="val" id="uplink">--</span></div>
+            <div class="row"><span class="lbl">WiFi IP:</span> <span class="val" id="wifi_ip">--</span></div>
             <div class="row"><span class="lbl">Uptime:</span> <span class="val" id="uptime">--</span></div>
-            <div class="row"><span class="lbl">Обновлено:</span> <span class="val" id="time">--</span></div>
+            <div class="row"><span class="lbl">Время платы:</span> <span class="val" id="time">--</span></div>
+            <div class="row"><span class="lbl">Данные:</span> <span class="val" id="age">--</span></div>
         </div>
     </div>
 
     <div class="buttons">
-        <!-- Если GitHub Pages, кнопки должны вести на локальный IP платы, когда вы находитесь в её сети -->
-        <a href="http://192.168.4.1/phones" class="btn btn-sms" target="_blank">📱 Настройки SMS</a>
         <a href="history.html" class="btn btn-history">📈 История и графики</a>
     </div>
 
@@ -166,16 +166,36 @@
             }
 
             // Питание и сеть
-            document.getElementById('power').textContent = data.extPower ? 'USB' : 'Батарея';
+            document.getElementById('power').textContent = data.extPower ? 'USB (внешнее)' : 'Батарея';
             document.getElementById('batt').textContent = fmt(data.batt, 2);
             document.getElementById('batt_pct').textContent = fmt(data.batt_pct, 0);
             document.getElementById('ip').textContent = data.modem_ip || '--';
             document.getElementById('signal').textContent = data.gsm || '--';
 
-            // Время
-            document.getElementById('uptime').textContent = data.uptime || '--';
+            // Сеть и время
+            document.getElementById('uplink').textContent = data.uplink || '4G';
+            document.getElementById('wifi_ip').textContent = data.wifi_ip || 'нет';
+            const up = Number(data.uptime_s);
+            if (!isNaN(up)) {
+                const d = Math.floor(up / 86400), h = Math.floor(up / 3600) % 24, m = Math.floor(up / 60) % 60;
+                document.getElementById('uptime').textContent = d + 'д ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+            } else document.getElementById('uptime').textContent = data.uptime || '--';
             document.getElementById('time').textContent = data.time || '--';
+            lastDeviceTime = (data.time && data.time.length >= 19) ? new Date(data.time.replace(' ', 'T') + '+03:00').getTime() : null;
+            updateAge();
         }
+
+        // Возраст данных: устройство шлёт статус раз в ~20 с; retained-сообщение может быть старым
+        let lastDeviceTime = null;
+        function updateAge() {
+            const el = document.getElementById('age');
+            if (!lastDeviceTime || isNaN(lastDeviceTime)) { el.textContent = '--'; el.style.color = ''; return; }
+            const sec = Math.max(0, Math.round((Date.now() - lastDeviceTime) / 1000));
+            const txt = sec < 90 ? 'актуальные (' + sec + ' с назад)' : sec < 3600 ? 'устарели: ' + Math.round(sec / 60) + ' мин назад' : 'устарели: ' + Math.round(sec / 3600) + ' ч назад';
+            el.textContent = txt;
+            el.style.color = sec < 90 ? '#81c784' : '#e57373';
+        }
+        setInterval(updateAge, 5000);
 
         // Подключение к MQTT
         function connectMQTT() {
