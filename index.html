@@ -129,7 +129,7 @@
     <div class="buttons">
         <!-- Если GitHub Pages, кнопки должны вести на локальный IP платы, когда вы находитесь в её сети -->
         <a href="http://192.168.4.1/phones" class="btn btn-sms" target="_blank">📱 Настройки SMS</a>
-        <a href="http://192.168.4.1/history" class="btn btn-history" target="_blank">📜 История (20 строк)</a>
+        <a href="history.html" class="btn btn-history">📈 История и графики</a>
     </div>
 
     <script>
@@ -166,7 +166,7 @@
             }
 
             // Питание и сеть
-            document.getElementById('power').textContent = data.extPower ? 'Внешнее' : 'Батарея';
+            document.getElementById('power').textContent = data.extPower ? 'USB' : 'Батарея';
             document.getElementById('batt').textContent = fmt(data.batt, 2);
             document.getElementById('batt_pct').textContent = fmt(data.batt_pct, 0);
             document.getElementById('ip').textContent = data.modem_ip || '--';
