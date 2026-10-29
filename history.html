@@ -86,18 +86,18 @@ function load(){
  render();
  const f=n=>n===null||n===undefined?'':n;
  document.getElementById('tb').innerHTML=rows.slice(-60).reverse().map(r=>'<tr><td>'+fmtFull(r.t)+'</td><td>'+[0,1,2,3,4].map(i=>f(r.v[i])).join('</td><td>')+'</td><td>'+(r.v[6]?'Wet':'Dry')+'</td><td>'+f(r.v[5])+'</td></tr>').join('')}
-const T_H24='MonitorESP32-002/history24',T_H30='MonitorESP32-002/history30',T_ST='MonitorESP32-002/status';
+const T_H=['MonitorESP32-002/hist0','MonitorESP32-002/hist1','MonitorESP32-002/hist2','MonitorESP32-002/hist3'],T_ST='MonitorESP32-002/status';
 function setBadge(c,t){const b=document.getElementById('mqtt');b.className='badge '+c;b.textContent=t}
 function connect(){
  const cl=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{clientId:'WebHist_'+Math.random().toString(16).slice(2,10),keepalive:60,clean:true,reconnectPeriod:5000});
- cl.on('connect',()=>{setBadge('ok','🟢 Подключено');cl.subscribe([T_H30,T_H24,T_ST])});
+ cl.on('connect',()=>{setBadge('ok','🟢 Подключено');cl.subscribe(T_H.concat([T_ST]))});
  cl.on('reconnect',()=>setBadge('wait','🟡 Переподключение...'));
  cl.on('offline',()=>setBadge('err','🔴 Нет связи'));
  cl.on('error',()=>setBadge('err','🔴 Ошибка MQTT'));
  cl.on('message',(topic,msg)=>{
   try{
    const d=JSON.parse(msg.toString());
-   if(topic===T_H24||topic===T_H30){addHist(d);later()}
+   if(T_H.indexOf(topic)>=0){addHist(d);later()}
    else if(topic===T_ST&&d.time&&d.time.length>=16){ // свежая точка между часовыми публикациями истории
     const t=pt(d.time.slice(0,16));const last=all.size?Math.max(...all.keys()):0;
     if(!isNaN(t)&&t>last+270e3){all.set(t,{t:t,v:[d.ds,d.ds2,d.ds3,d.dht_t,d.dht_h,d.batt,d.rain?1:0]});later()}}
