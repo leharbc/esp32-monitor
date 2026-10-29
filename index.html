@@ -87,6 +87,23 @@
         }
         .btn:active { transform: scale(0.98); }
                 .btn-history { background: #81c784; color: #000; }
+
+        .ds { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #2c2c2c; }
+        .ds .row { margin-bottom: 4px; }
+        .mm { color: #aaa; font-size: 0.9em; margin-bottom: 4px; white-space: nowrap; }
+        .mm b { color: #ddd; }
+        .al { color: #aaa; font-size: 0.95em; }
+        .al b { color: #ffb74d; }
+        .eb { background: #333; color: #4fc3f7; border: 1px solid #555; border-radius: 6px; padding: 3px 12px; margin-left: 8px; cursor: pointer; font-size: 0.95em; }
+        #md { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: #000a; z-index: 9; align-items: center; justify-content: center; }
+        .box { background: #1e1e1e; border-radius: 12px; padding: 20px; width: min(320px, 86vw); }
+        .box h3 { margin: 0 0 12px; color: #4fc3f7; }
+        .box label { color: #aaa; font-size: 0.9em; }
+        .box input { background: #333; color: #fff; border: 1px solid #555; padding: 9px; border-radius: 6px; width: 100%; box-sizing: border-box; margin: 4px 0 10px; font-size: 16px; }
+        .box .bt { background: #4fc3f7; color: #000; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 48%; font-size: 1em; }
+        .box .bt.c { background: #555; color: #eee; float: right; }
+        .err { color: #e57373; font-size: 0.9em; min-height: 1.2em; margin-bottom: 6px; }
+        .ok { color: #81c784; }
     </style>
 </head>
 <body>
@@ -101,10 +118,26 @@
         <!-- Датчики -->
         <div class="card">
             <h2>Датчики</h2>
-            <div class="row"><span class="lbl">DS18B20 (1):</span> <span class="val" id="ds1">--</span> °C</div>
-            <div class="row"><span class="lbl">DS18B20 (2):</span> <span class="val" id="ds2">--</span> °C</div>
-            <div class="row"><span class="lbl">DS18B20 (3):</span> <span class="val" id="ds3">--</span> °C</div>
-            <div class="row"><span class="lbl">DHT11:</span> <span class="val" id="dht">--</span> °C / <span class="val" id="hum">--</span> %</div>
+            <div class="ds">
+                <div class="row"><span><span class="lbl">DS18B20 (1):</span> <span class="val" id="ds1">--</span> °C</span></div>
+                <div class="mm">мин <b id="mn1">--</b> / макс <b id="mx1">--</b> °C (24 ч)</div>
+                <div class="al">Тревога: <b id="lo1">--</b> … <b id="hi1">--</b> °C <button class="eb" onclick="openEdit(1)">Изменить</button></div>
+            </div>
+            <div class="ds">
+                <div class="row"><span><span class="lbl">DS18B20 (2):</span> <span class="val" id="ds2">--</span> °C</span></div>
+                <div class="mm">мин <b id="mn2">--</b> / макс <b id="mx2">--</b> °C (24 ч)</div>
+                <div class="al">Тревога: <b id="lo2">--</b> … <b id="hi2">--</b> °C <button class="eb" onclick="openEdit(2)">Изменить</button></div>
+            </div>
+            <div class="ds">
+                <div class="row"><span><span class="lbl">DS18B20 (3):</span> <span class="val" id="ds3">--</span> °C</span></div>
+                <div class="mm">мин <b id="mn3">--</b> / макс <b id="mx3">--</b> °C (24 ч)</div>
+                <div class="al">Тревога: <b id="lo3">--</b> … <b id="hi3">--</b> °C <button class="eb" onclick="openEdit(3)">Изменить</button></div>
+            </div>
+            <div class="ds">
+                <div class="row"><span><span class="lbl">DHT11:</span> <span class="val" id="dht">--</span> °C / <span class="val" id="hum">--</span> %</span></div>
+                <div class="mm">t: мин <b id="mnT">--</b> / макс <b id="mxT">--</b> °C (24 ч)</div>
+                <div class="mm">влажность: мин <b id="mnH">--</b> / макс <b id="mxH">--</b> % (24 ч)</div>
+            </div>
             <div class="row"><span class="lbl">Влага:</span> <span class="val" id="water">--</span></div>
         </div>
 
@@ -128,6 +161,23 @@
         </div>
     </div>
 
+
+    <div id="md"><div class="box">
+        <h3 id="mt">Порог тревоги</h3>
+        <div id="s1">
+            <label>PIN-код</label><input type="password" id="pin" inputmode="numeric" placeholder="****">
+            <div class="err" id="e1"></div>
+            <button class="bt" onclick="step1()">Далее</button><button class="bt c" onclick="closeEdit()">Отмена</button>
+        </div>
+        <div id="s2" style="display:none">
+            <label>Минимум, °C</label><input type="number" step="0.1" id="vmin">
+            <label>Максимум, °C</label><input type="number" step="0.1" id="vmax">
+            <div class="err" id="e2"></div>
+            <button class="bt" onclick="step2()">OK</button><button class="bt c" onclick="closeEdit()">Отмена</button>
+        </div>
+        <div id="s3" style="display:none"><div id="e3" class="err ok"></div><button class="bt c" style="float:none;width:100%" onclick="closeEdit()">Закрыть</button></div>
+    </div></div>
+
     <div class="buttons">
         <a href="history.html" class="btn btn-history">📈 История и графики</a>
     </div>
@@ -136,6 +186,9 @@
         // Настройки MQTT
         const MQTT_URL = 'wss://broker.hivemq.com:8884/mqtt';
         const TOPIC_STATUS = 'MonitorESP32-002/status';
+        const TOPIC_CMD = 'MonitorESP32-002/cmd';
+        const TOPIC_HIST = ['MonitorESP32-002/hist0', 'MonitorESP32-002/hist1'];   // последние 3 ч (по 5 мин) и 3-24 ч (по 15 мин)
+        const PIN_CODE = '1111';
         
         const statusBadge = document.getElementById('mqtt-status');
         let client = null;
@@ -155,6 +208,11 @@
             document.getElementById('dht').textContent = fmt(data.dht_t, 2);
             document.getElementById('hum').textContent = fmt(data.dht_h, 1);
             
+            lastStatus = data;
+            addLive(data);
+            showMinMax();
+            showLimits(data);
+
             // Влага (rain: 1 = влажно, 0 = сухо)
             const waterEl = document.getElementById('water');
             if (data.rain === 1) {
@@ -197,6 +255,124 @@
         }
         setInterval(updateAge, 5000);
 
+
+        // ---------- мин/макс за 24 часа: история с платы (hist0 + hist1) + живые значения со страницы ----------
+        let lastStatus = null;
+        const histRows = new Map();   // время(мс) -> [DS1, DS2, DS3, DHT_T, DHT_H]
+        const live = [];              // {t, v:[5]} значения из статуса, пока страница открыта
+
+        function addHist(arr) {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(r => {
+                if (!Array.isArray(r) || r.length < 6) return;
+                const t = new Date(String(r[0]).replace(' ', 'T') + ':00+03:00').getTime();
+                if (!isNaN(t)) histRows.set(t, [r[1], r[2], r[3], r[4], r[5]]);
+            });
+            showMinMax();
+        }
+        function addLive(d) {
+            live.push({ t: Date.now(), v: [d.ds, d.ds2, d.ds3, d.dht_t, d.dht_h] });
+            const cut = Date.now() - 24 * 3600e3;
+            while (live.length && live[0].t < cut) live.shift();
+            if (live.length > 5000) live.splice(0, live.length - 5000);
+        }
+        function showMinMax() {
+            const cut = Date.now() - 24 * 3600e3;
+            const mn = [null, null, null, null, null], mx = [null, null, null, null, null];
+            const take = v => {
+                for (let i = 0; i < 5; i++) {
+                    const x = v[i];
+                    if (x === null || x === undefined || isNaN(x) || Math.abs(x) < 0.001) continue;   // нули (сбой датчика) не учитываем
+                    if (mn[i] === null || x < mn[i]) mn[i] = x;
+                    if (mx[i] === null || x > mx[i]) mx[i] = x;
+                }
+            };
+            histRows.forEach((v, t) => { if (t >= cut) take(v); });
+            live.forEach(o => take(o.v));
+            for (let n = 1; n <= 3; n++) {
+                document.getElementById('mn' + n).textContent = fmt(mn[n - 1], 1);
+                document.getElementById('mx' + n).textContent = fmt(mx[n - 1], 1);
+            }
+            document.getElementById('mnT').textContent = fmt(mn[3], 1);
+            document.getElementById('mxT').textContent = fmt(mx[3], 1);
+            document.getElementById('mnH').textContent = fmt(mn[4], 0);
+            document.getElementById('mxH').textContent = fmt(mx[4], 0);
+        }
+
+        // ---------- пороги тревоги ----------
+        function limits(d, n) {   // старая прошивка присылает один общий порог t_min/t_max
+            const k = n === 1 ? '' : String(n);
+            let lo = d['t_min' + k], hi = d['t_max' + k];
+            if (lo === undefined) { lo = d.t_min; hi = d.t_max; }
+            return [lo, hi];
+        }
+        function showLimits(d) {
+            for (let n = 1; n <= 3; n++) {
+                const [lo, hi] = limits(d, n);
+                document.getElementById('lo' + n).textContent = fmt(lo, 1);
+                document.getElementById('hi' + n).textContent = fmt(hi, 1);
+            }
+            checkPending(d);
+        }
+
+        let EN = 0, pending = null, pendTimer = null;
+        function openEdit(n) {
+            EN = n;
+            document.getElementById('mt').textContent = 'Порог тревоги DS' + n;
+            document.getElementById('pin').value = '';
+            document.getElementById('e1').textContent = '';
+            document.getElementById('e2').textContent = '';
+            document.getElementById('s1').style.display = 'block';
+            document.getElementById('s2').style.display = 'none';
+            document.getElementById('s3').style.display = 'none';
+            document.getElementById('md').style.display = 'flex';
+            document.getElementById('pin').focus();
+        }
+        function closeEdit() { document.getElementById('md').style.display = 'none'; }
+        function step1() {
+            if (document.getElementById('pin').value !== PIN_CODE) { document.getElementById('e1').textContent = 'Неверный PIN-код'; return; }
+            document.getElementById('vmin').value = document.getElementById('lo' + EN).textContent;
+            document.getElementById('vmax').value = document.getElementById('hi' + EN).textContent;
+            document.getElementById('s1').style.display = 'none';
+            document.getElementById('s2').style.display = 'block';
+        }
+        function step2() {
+            const a = parseFloat(document.getElementById('vmin').value), b = parseFloat(document.getElementById('vmax').value);
+            if (isNaN(a) || isNaN(b) || a >= b) { document.getElementById('e2').textContent = 'Минимум должен быть меньше максимума'; return; }
+            if (!client || !client.connected) { document.getElementById('e2').textContent = 'Нет связи с MQTT'; return; }
+            pending = { n: EN, a: a, b: b, t0: Date.now() };
+            sendPending();
+            if (pendTimer) clearInterval(pendTimer);
+            pendTimer = setInterval(() => {
+                if (!pending) { clearInterval(pendTimer); return; }
+                if (Date.now() - pending.t0 > 90000) {
+                    pending = null; clearInterval(pendTimer);
+                    document.getElementById('e3').className = 'err';
+                    document.getElementById('e3').textContent = 'Устройство не подтвердило. Проверьте связь платы и повторите.';
+                    return;
+                }
+                sendPending();
+            }, 4000);
+            document.getElementById('s2').style.display = 'none';
+            document.getElementById('s3').style.display = 'block';
+            document.getElementById('e3').className = 'err ok';
+            document.getElementById('e3').textContent = 'Отправлено, жду подтверждения от платы (до 1–2 минут)...';
+        }
+        // команда принимается платой только в короткое окно после очередного цикла связи, поэтому повторяем, пока плата не подтвердит новым статусом
+        function sendPending() {
+            if (!pending || !client) return;
+            client.publish(TOPIC_CMD, 'set_thresh_n:' + pending.n + ',' + pending.a + ',' + pending.b, { qos: 1 });
+        }
+        function checkPending(d) {
+            if (!pending) return;
+            const [lo, hi] = limits(d, pending.n);
+            if (Math.abs(lo - pending.a) < 0.06 && Math.abs(hi - pending.b) < 0.06) {
+                pending = null; clearInterval(pendTimer);
+                document.getElementById('e3').className = 'err ok';
+                document.getElementById('e3').textContent = 'Готово: плата приняла новые пороги.';
+            }
+        }
+
         // Подключение к MQTT
         function connectMQTT() {
             statusBadge.className = 'status-badge connecting';
@@ -217,6 +393,7 @@
                 statusBadge.className = 'status-badge connected';
                 statusBadge.innerHTML = '🟢 Подключено';
                 
+                client.subscribe(TOPIC_HIST);
                 client.subscribe(TOPIC_STATUS, (err) => {
                     if (!err) {
                         console.log('Подписка оформлена: ' + TOPIC_STATUS);
@@ -227,6 +404,10 @@
             });
 
             client.on('message', (topic, message) => {
+                if (TOPIC_HIST.indexOf(topic) >= 0) {
+                    try { addHist(JSON.parse(message.toString())); } catch (e) { console.error('Ошибка истории:', e); }
+                    return;
+                }
                 if (topic === TOPIC_STATUS) {
                     try {
                         const data = JSON.parse(message.toString());
